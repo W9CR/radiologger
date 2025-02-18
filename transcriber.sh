@@ -1,10 +1,10 @@
 #!/bin/bash
 # vim: ts=2 sw=2
 #
-#       A cron job script for transcribing audio and sorting files
+#       A script for transcribing audio and sorting files
 #
 #
-#       This is intended to be run from cron every 5 min
+#       This is intended to be run from systemd
 #
 #
 #  Copyright (C) 2020 Bryan Fields
@@ -27,7 +27,7 @@
 #--------------------------- Revision History ----------------------------------
 #  2025-02-15   bfields inital prototype
 #  2025-02-17   numerious bugfixes inital git commit
-#
+#  2025-02-17	bfields	fix if too large, wave file is not removed.
 
 #How to use
 # bash ./transcriber.sh /path/to/base-dir
@@ -226,7 +226,9 @@ def pad2: if . < 10 then "0" + tostring else tostring end;
 #OK put it all together
 PID
 #test if glob exists
-if ls ${BASEDIR}/current/${GLOB} &> /dev/null
+#if ls ${BASEDIR}/current/${GLOB} &> /dev/null
+#EO's  refactor
+if [[ -e ${BASEDIR}/current/${GLOB} ]]
 then 
 	for i in ${BASEDIR}/current/${GLOB}  
 	do
@@ -271,6 +273,7 @@ then
 		then
 			echo "oggfile ${BASENAME}.ogg larger than ${LSIZE} bytes; will not be transcribed"
 			mv ${OGGTEMP} "${BASEDIR}/${YEAR}/${MONTH}/${DAY}/${BASENAME}.ogg" 
+			rm "$i"
 		elif [ $CKEXIT -eq '0' ]
 		then
 			echo "TRANSCRIBE and TEXTIFY $i"
