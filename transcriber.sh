@@ -26,7 +26,11 @@
 #
 #--------------------------- Revision History ----------------------------------
 #  2025-02-15   bfields inital prototype
+#  2025-02-17   numerious bugfixes inital git commit
+#
 
+#How to use
+# bash ./transcriber.sh /path/to/base-dir
 
 # set bash options
 #set -e
@@ -36,8 +40,8 @@
 #BASEDIR='/home/svar/rec/top-right'
 BASEDIR="$1"
 #largest size, 25mib
-LSIZE='26214400'
 
+LSIZE='26214400'
 #the smallest size file we will transcribe 
 #8000 Samples * 2 bytes per sample = 16000 bytes/s = 10 sec of dead error for each, plus 4 seconds = 224000 bytes
 SSIZE='224000'
@@ -45,6 +49,7 @@ SSIZE='224000'
 OPENAITOKEN='AITOKEN'
 TEMPDIR="${BASEDIR}/tmp"
 ERRDIR="${BASEDIR}/errors"
+PIDFILE="${TEMPDIR}/transcriber.pid"
 #must end in .ogg
 OGGTEMP="${TEMPDIR}/ogg.tmp.ogg"
 JSON="${TEMPDIR}/json.tmp"
@@ -52,8 +57,43 @@ TEXTTEMP="${TEMPDIR}/tmp.txt"
 GLOB="*.wav"
 
 function PID {
-# make the pid file
-echo "hi"
+
+	if test -d $TEMPDIR
+        then
+               	#echo "Temp Dir $TEMPDIR is present"
+               	:
+        else
+               	mkdir -p $TEMPDIR && echo "Temp Directory $TEMPDIR Created"
+        fi
+
+
+	if [ -f $PIDFILE ]
+	then
+
+
+		PID=$(cat $PIDFILE)
+		ps -p $PID > /dev/null 2>&1
+	      	if [ $? -eq 0 ]
+	      	then
+			echo "Process already running"
+		      	exit 1
+	      	else
+		## Process not found assume not running
+			echo $$ > $PIDFILE
+		    	if [ $? -ne 0 ]
+		    	then
+			  	echo "Could not create PID file"
+				exit 1
+			fi
+		fi
+	else
+		echo $$ > $PIDFILE
+		if [ $? -ne 0 ]
+		then
+			echo "Could not create PID file"
+			exit 1
+		fi
+	fi
 
 }
 
@@ -147,14 +187,7 @@ function DIRVERIFY {
 	else 
 		mkdir -p $ERRDIR && echo "Temp Directory $ERRDIR Created"
 	fi
-	# check that TMP is there
-	if test -d $TEMPDIR
-	then
-		#echo "Temp Dir $TEMPDIR is present"
-		:
-	else 
-		mkdir -p $TEMPDIR && echo "Temp Directory $TEMPDIR Created"
-	fi
+
 	# check that the directory exists based on FILENAME function output
 	if test -d ${BASEDIR}/${YEAR}/${MONTH}/${DAY} 
 	then 
@@ -188,8 +221,10 @@ def pad2: if . < 10 then "0" + tostring else tostring end;
 }
 
 
-#OK put it all together
 
+
+#OK put it all together
+PID
 #test if glob exists
 if ls ${BASEDIR}/current/${GLOB} &> /dev/null
 then 
@@ -229,7 +264,7 @@ then
 			continue  1
 		fi
 		CKEXIT='0'
-#	; continue  
+		#Convert the File to OGG, check that it's under 25 meg (2:22.22)
 		OGGIFY $i
 		CKEXIT=$?
 		if [ $CKEXIT -eq '25' ]
@@ -238,7 +273,7 @@ then
 			mv ${OGGTEMP} "${BASEDIR}/${YEAR}/${MONTH}/${DAY}/${BASENAME}.ogg" 
 		elif [ $CKEXIT -eq '0' ]
 		then
-			echo "TRASNSCRIBE and TEXTIFY"
+			echo "TRANSCRIBE and TEXTIFY $i"
 			TRANSCRIBE
 			TEXTIFY
 			mv ${OGGTEMP} "${BASEDIR}/${YEAR}/${MONTH}/${DAY}/${BASENAME}.ogg"
@@ -252,6 +287,7 @@ then
 
 	done
 	echo "processed all files in ${BASEDIR}/current/"
+	rm $PIDFILE
 
 else
 	echo "${BASEDIR}/current/${GLOB} doesn't exist"
