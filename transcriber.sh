@@ -3,9 +3,7 @@
 #
 #       A script for transcribing audio and sorting files
 #
-#
 #       This is intended to be run from systemd
-#
 #
 #  Copyright (C) 2020 Bryan Fields
 #  bryan@bryanfields.net
@@ -26,8 +24,9 @@
 #
 #--------------------------- Revision History ----------------------------------
 #  2025-02-15   bfields inital prototype
-#  2025-02-17   numerious bugfixes inital git commit
+#  2025-02-17   bfields numerious bugfixes inital git commit
 #  2025-02-17	bfields	fix if too large, wave file is not removed.
+#  2025-02-17	bfields	fix http error handeling add config file
 
 #How to use
 # bash ./transcriber.sh /path/to/base-dir
@@ -39,14 +38,16 @@
 # variables 
 #BASEDIR='/home/svar/rec/top-right'
 BASEDIR="$1"
-#largest size, 25mib
 
+#Defaults:
+#
+#largest size, 25mib
 LSIZE='26214400'
 #the smallest size file we will transcribe 
 #8000 Samples * 2 bytes per sample = 16000 bytes/s = 10 sec of dead error for each, plus 4 seconds = 224000 bytes
 SSIZE='224000'
-#Open AI token
-OPENAITOKEN='AITOKEN'
+#Open AI token, should be set in .trans.conf
+OPENAITOKEN=''
 TEMPDIR="${BASEDIR}/tmp"
 ERRDIR="${BASEDIR}/errors"
 PIDFILE="${TEMPDIR}/transcriber.pid"
@@ -55,6 +56,12 @@ OGGTEMP="${TEMPDIR}/ogg.tmp.ogg"
 JSON="${TEMPDIR}/json.tmp"
 TEXTTEMP="${TEMPDIR}/tmp.txt"
 GLOB="*.wav"
+
+
+#readin config from /home/svar/.trans.conf
+#anything here overwrites defaults
+source /home/svar/.trans.conf
+
 
 function PID {
 
@@ -199,13 +206,20 @@ function DIRVERIFY {
 }
 
 function TRANSCRIBE {
-	curl "https://api.openai.com/v1/audio/transcriptions" \
+	local http_response=$(curl -w "%{http_code}" "https://api.openai.com/v1/audio/transcriptions" \
 		-H "Authorization: Bearer ${OPENAITOKEN}" \
 		-H "Content-Type: multipart/form-data" \
 		-F file="@${OGGTEMP}"  \
 		-F model="whisper-1" \
 		-F response_format="verbose_json" \
-		-F "timestamp_granularities[]=segment" > ${JSON}
+		-F "timestamp_granularities[]=segment" -o ${JSON} ) 
+ 	local exitcode=$?
+	if [ $http_response -eq '200' ] && [ $exitcode -eq '0' ] 
+	then
+		return 0
+	else
+		return 255
+	fi
 }
 
 function TEXTIFY {
@@ -218,17 +232,17 @@ def pad2: if . < 10 then "0" + tostring else tostring end;
  (((.start % 3600) / 60 | floor) | pad2) + ":" +
  ((.start % 60 | pad2 ))
 )  + "  " +     .text' ${JSON} > ${TEXTTEMP}
+	return $?
 }
-
 
 
 
 #OK put it all together
 PID
 #test if glob exists
-#if ls ${BASEDIR}/current/${GLOB} &> /dev/null
+if ls ${BASEDIR}/current/${GLOB} &> /dev/null
 #EO's  refactor
-if [[ -e ${BASEDIR}/current/${GLOB} ]]
+#if [[ -e ${BASEDIR}/current/${GLOB} ]]
 then 
 	for i in ${BASEDIR}/current/${GLOB}  
 	do
@@ -277,8 +291,22 @@ then
 		elif [ $CKEXIT -eq '0' ]
 		then
 			echo "TRANSCRIBE and TEXTIFY $i"
-			TRANSCRIBE
+			TRANSCRIBE 
+			if [ $? -ne '0' ]
+			then
+				echo "TRANSCRIBE error with $i"
+				continue  1
+			else
+				:
+			fi
 			TEXTIFY
+			if [ $? -ne '0' ]
+			then
+				echo "TEXTIFY error with $i"
+				continue  1
+			else
+				:
+			fi
 			mv ${OGGTEMP} "${BASEDIR}/${YEAR}/${MONTH}/${DAY}/${BASENAME}.ogg"
 			mv ${TEXTTEMP} "${BASEDIR}/${YEAR}/${MONTH}/${DAY}/${BASENAME}.txt"
 			mv ${JSON} "${BASEDIR}/${YEAR}/${MONTH}/${DAY}/${BASENAME}.json"
