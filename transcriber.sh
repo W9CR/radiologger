@@ -27,6 +27,7 @@
 #  2025-02-17   bfields numerious bugfixes inital git commit
 #  2025-02-17	bfields	fix if too large, wave file is not removed.
 #  2025-02-17	bfields	fix http error handeling add config file
+#  2025-07-25	bfields changed the parsing of the file name to use awk
 
 #How to use
 # bash ./transcriber.sh /path/to/base-dir
@@ -155,19 +156,25 @@ function CHECK_FILE {
 }
 
 function FILENAME {
-
+	#define array
+	let -a NAMEARRAY
+	# this now uses AWK to work from the end of the file, so the PREFIX can be anything, so long as the end of the file is YYYY-MM-DD-TTTT.SS.wav 
 	#get the date 2025-02-04
 	BASENAME=${1##*/}
 	BASENAME=${BASENAME%.*}
-	DATE=`echo $BASENAME | grep -Eo '[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}'`
-	YEAR=`echo ${DATE} | cut --delimiter='-' --fields=1`
-	MONTH=`echo ${DATE} | cut --delimiter='-' --fields=2`
-	DAY=`echo ${DATE} | cut --delimiter='-' --fields=3`
+	NAMEARRAY=( $(echo $BASENAME | awk  'BEGIN {FS= "-" } {OFS=FS} {print $(NF-3)"-"$(NF-2)"-"$(NF-1) ; print $(NF-3); print $(NF-2); print $(NF-1); print $(NF-0)} { $(NF-=4); print }') )
+	DATE=${NAMEARRAY[0]}
+	YEAR=${NAMEARRAY[1]}
+	MONTH=${NAMEARRAY[2]}
+	DAY=${NAMEARRAY[3]}
 	# get the TL part
-	PREFIX=`echo $BASENAME |  cut --delimiter='-' --fields=1`
+	PREFIX=${NAMEARRAY[5]}
 	#get the TIME in HHMM.SS
-	TIME=`echo $BASENAME |  cut --delimiter='-' --fields=5 | cut --delimiter='.' --fields=1,2`
+	TIME=${NAMEARRAY[4]}
+#	echo " DATE = $DATE , YEAR = $YEAR , MONTH = $MONTH , DAY = $DAY , TIme = $TIME , PREFIX = $PREFIX"
+
 }
+
 
 function OGGIFY {
 	# here we convert it to OGG and check that it's under LSIZE
